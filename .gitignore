@@ -1,0 +1,17 @@
+# Build output
+artifacts/
+bin/
+obj/
+
+# Local runtime state
+status.json
+*.log
+*.tmp
+
+# IDE and operating system files
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
