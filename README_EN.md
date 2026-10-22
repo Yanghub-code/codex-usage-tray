@@ -21,6 +21,8 @@ A lightweight, open-source Windows taskbar meter for Codex quota and physical me
 ## Features
 
 - A compact, non-activating panel positioned immediately to the left of the Windows system tray.
+- Automatically hides during true fullscreen apps (including browser fullscreen videos and presentations) on the primary taskbar display and reappears afterward. Maximized windows are not treated as fullscreen.
+- Toggle **Auto-hide in fullscreen** from the panel's right-click menu. The setting persists in `%LOCALAPPDATA%\CodexUsageTray\settings.json`; readings keep updating while hidden.
 - Codex quota refreshes every 5 minutes by default.
 - Memory usage refreshes every 30 minutes by default.
 - Both values are read immediately at startup.
@@ -36,7 +38,7 @@ A lightweight, open-source Windows taskbar meter for Codex quota and physical me
 
 ## Install
 
-1. Download `CodexUsageTray-v2.0.2-win-x64.zip` from the [latest release](https://github.com/Yanghub-code/codex-usage-tray/releases/latest).
+1. Download `CodexUsageTray-v2.0.3-win-x64.zip` from the [latest release](https://github.com/Yanghub-code/codex-usage-tray/releases/latest).
 2. Extract it.
 3. Run:
 
