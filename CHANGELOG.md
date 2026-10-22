@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## [2.0.4] - 2026-10-22
+
+### Added
+
+- Start a lightweight local watcher when the meter starts; it restores the meter after Codex desktop is started or restarted.
+- The watcher recognizes the installed Codex desktop package only, prevents duplicate meter instances, and keeps a manual tray-menu exit respected until Codex is opened again.
+
 ## [2.0.3] - 2026-10-22
 
 ### Added
@@ -30,3 +37,4 @@ All notable changes to this project are documented here.
 ## [1.1.0] - 2026-10-15
 
 - Initial two-icon notification-area implementation.
+
