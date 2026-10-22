@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [2.0.3] - 2026-10-22
+
+### Added
+
+- Automatically hide the taskbar-adjacent meter during true fullscreen apps; restore after exiting fullscreen.
+- Right-click toggle for fullscreen auto-hide, enabled by default and persisted per user.
+- Fullscreen detection scoped to the primary taskbar display; normal maximized windows stay visible.
+
 ## [2.0.2] - 2026-10-16
 
 ### Added
