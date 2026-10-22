@@ -18,30 +18,243 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Windows tray indicators for Codex quota and physical memory")]
 [assembly: AssemblyCompany("Local")]
 [assembly: AssemblyProduct("Codex Usage Tray")]
-[assembly: AssemblyVersion("2.0.3.0")]
+[assembly: AssemblyVersion("2.0.4.0")]
 
 namespace CodexUsageTray
 {
     internal static class Program
     {
+        internal const string MeterMutexName = @"Local\CodexUsageTray_8E41D6B4";
         private static Mutex instanceMutex;
 
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
+            if (args != null && args.Length > 0 &&
+                string.Equals(args[0], "--watch-codex", StringComparison.OrdinalIgnoreCase))
+            {
+                CodexLaunchWatcher.Run();
+                return;
+            }
+
             bool createdNew;
-            instanceMutex = new Mutex(true, @"Local\CodexUsageTray_8E41D6B4", out createdNew);
+            instanceMutex = new Mutex(true, MeterMutexName, out createdNew);
             if (!createdNew)
             {
                 return;
             }
 
+            CodexLaunchWatcher.EnsureStarted();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new TrayApplicationContext());
 
             instanceMutex.ReleaseMutex();
             instanceMutex.Dispose();
+        }
+    }
+
+    internal static class CodexLaunchWatcher
+    {
+        private const string WatcherMutexName = @"Local\CodexUsageTrayWatcher_8E41D6B4";
+        private const int PollIntervalMilliseconds = 2000;
+        private static readonly object SyncRoot = new object();
+        private static bool hasObservedCodex;
+        private static HashSet<int> codexProcessIds = new HashSet<int>();
+
+        internal static void EnsureStarted()
+        {
+            if (IsWatcherRunning())
+            {
+                return;
+            }
+
+            try
+            {
+                string executable = GetCurrentExecutablePath();
+                if (string.IsNullOrEmpty(executable))
+                {
+                    return;
+                }
+
+                ProcessStartInfo startInfo = new ProcessStartInfo();
+                startInfo.FileName = executable;
+                startInfo.Arguments = "--watch-codex";
+                startInfo.WorkingDirectory = Path.GetDirectoryName(executable);
+                startInfo.UseShellExecute = false;
+                startInfo.CreateNoWindow = true;
+                Process.Start(startInfo);
+            }
+            catch
+            {
+                // The meter itself remains usable if the optional watcher cannot start.
+            }
+        }
+
+        internal static void Run()
+        {
+            bool createdNew;
+            using (Mutex watcherMutex = new Mutex(true, WatcherMutexName, out createdNew))
+            {
+                if (!createdNew)
+                {
+                    return;
+                }
+
+                try
+                {
+                    using (ManualResetEvent stopEvent = new ManualResetEvent(false))
+                    using (System.Threading.Timer timer = new System.Threading.Timer(
+                        delegate { ObserveCodexState(); }, null, 0, PollIntervalMilliseconds))
+                    {
+                        stopEvent.WaitOne();
+                    }
+                }
+                finally
+                {
+                    watcherMutex.ReleaseMutex();
+                }
+            }
+        }
+
+        private static void ObserveCodexState()
+        {
+            try
+            {
+                HashSet<int> currentProcessIds = GetCodexDesktopProcessIds();
+                bool shouldRestoreMeter;
+                lock (SyncRoot)
+                {
+                    shouldRestoreMeter = currentProcessIds.Count > 0 &&
+                        (!hasObservedCodex || HasNewCodexProcess(currentProcessIds));
+                    hasObservedCodex = true;
+                    codexProcessIds = currentProcessIds;
+                }
+
+                if (shouldRestoreMeter)
+                {
+                    StartMeterIfMissing();
+                }
+            }
+            catch
+            {
+                // A transient process-query failure is retried at the next interval.
+            }
+        }
+
+        private static HashSet<int> GetCodexDesktopProcessIds()
+        {
+            HashSet<int> processIds = new HashSet<int>();
+            Process[] candidates = Process.GetProcessesByName("ChatGPT");
+            foreach (Process candidate in candidates)
+            {
+                try
+                {
+                    string executable = candidate.MainModule == null ? null : candidate.MainModule.FileName;
+                    if (!string.IsNullOrEmpty(executable) &&
+                        executable.IndexOf(@"\OpenAI.Codex_", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        processIds.Add(candidate.Id);
+                    }
+                }
+                catch
+                {
+                    // Individual protected processes are irrelevant to this user-session check.
+                }
+                finally
+                {
+                    candidate.Dispose();
+                }
+            }
+
+            return processIds;
+        }
+
+        private static bool HasNewCodexProcess(HashSet<int> currentProcessIds)
+        {
+            foreach (int processId in currentProcessIds)
+            {
+                if (!codexProcessIds.Contains(processId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsWatcherRunning()
+        {
+            try
+            {
+                using (Mutex watcher = Mutex.OpenExisting(WatcherMutexName))
+                {
+                    return true;
+                }
+            }
+            catch (WaitHandleCannotBeOpenedException)
+            {
+                return false;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private static bool IsMeterRunning()
+        {
+            try
+            {
+                using (Mutex meter = Mutex.OpenExisting(Program.MeterMutexName))
+                {
+                    return true;
+                }
+            }
+            catch (WaitHandleCannotBeOpenedException)
+            {
+                return false;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private static void StartMeterIfMissing()
+        {
+            if (IsMeterRunning())
+            {
+                return;
+            }
+
+            try
+            {
+                string executable = GetCurrentExecutablePath();
+                if (string.IsNullOrEmpty(executable) || !File.Exists(executable))
+                {
+                    return;
+                }
+
+                ProcessStartInfo startInfo = new ProcessStartInfo();
+                startInfo.FileName = executable;
+                startInfo.WorkingDirectory = Path.GetDirectoryName(executable);
+                startInfo.UseShellExecute = false;
+                startInfo.CreateNoWindow = true;
+                Process.Start(startInfo);
+            }
+            catch
+            {
+                // The next Codex launch can retry restoration.
+            }
+        }
+
+        private static string GetCurrentExecutablePath()
+        {
+            using (Process current = Process.GetCurrentProcess())
+            {
+                return current.MainModule == null ? null : current.MainModule.FileName;
+            }
         }
     }
 
@@ -815,7 +1028,7 @@ namespace CodexUsageTray
             {
                 Dictionary<string, object> status = new Dictionary<string, object>();
                 status["updatedAt"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
-                status["appVersion"] = "2.0.3";
+                status["appVersion"] = "2.0.4";
                 status["memoryRefreshSeconds"] = MemoryRefreshMilliseconds / 1000;
                 status["codexRefreshSeconds"] = QuotaRefreshMilliseconds / 1000;
 
@@ -1260,3 +1473,4 @@ namespace CodexUsageTray
         }
     }
 }
+
