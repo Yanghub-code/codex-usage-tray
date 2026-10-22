@@ -23,7 +23,7 @@ A lightweight, open-source Windows taskbar meter for Codex quota and physical me
 - A compact, non-activating panel positioned immediately to the left of the Windows system tray.
 - Automatically hides during true fullscreen apps (including browser fullscreen videos and presentations) on the primary taskbar display and reappears afterward. Maximized windows are not treated as fullscreen.
 - Toggle **Auto-hide in fullscreen** from the panel's right-click menu. The setting persists in `%LOCALAPPDATA%\CodexUsageTray\settings.json`; readings keep updating while hidden.
-- Keeps Windows sign-in startup and starts a lightweight local watcher that restores the meter when the Codex desktop app is started or restarted, without launching duplicate meter instances.
+- Keeps Windows sign-in startup and a separate current-user Startup shortcut for an independent watcher that restores the meter when the Codex desktop app is started or restarted, without launching duplicate meter instances.
 - Codex quota refreshes every 5 minutes by default.
 - Memory usage refreshes every 30 minutes by default.
 - Both values are read immediately at startup.
@@ -39,7 +39,7 @@ A lightweight, open-source Windows taskbar meter for Codex quota and physical me
 
 ## Install
 
-1. Download `CodexUsageTray-v2.0.4-win-x64.zip` from the [latest release](https://github.com/Yanghub-code/codex-usage-tray/releases/latest).
+1. Download `CodexUsageTray-v2.0.6-win-x64.zip` from the [latest release](https://github.com/Yanghub-code/codex-usage-tray/releases/latest).
 2. Extract it.
 3. Run:
 
@@ -47,7 +47,7 @@ A lightweight, open-source Windows taskbar meter for Codex quota and physical me
    powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
    ```
 
-The installer copies the app to `%LOCALAPPDATA%\CodexUsageTray`, creates a per-user startup shortcut, and launches the app.
+The installer copies the app to `%LOCALAPPDATA%\CodexUsageTray`, creates separate per-user Startup shortcuts for the meter and independent Codex launch watcher, and launches the app.
 
 The release binary is currently unsigned. Verify the published SHA-256 checksum or build from source if Windows displays an origin warning.
 

@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here.
 
+## [2.0.6] - 2026-10-22
+
+### Fixed
+
+- Use a separate current-user Startup shortcut and Explorer launch for the independent watcher, avoiding task-scheduler permission restrictions and coupling to a Codex process tree.
+
+## [2.0.5] - 2026-10-22
+
+### Fixed
+
+- Register the Codex launch watcher as a current-user logon task so it remains independent of a Codex desktop restart and can restore the meter reliably.
+- Start meter and watcher launches through the Windows shell to avoid coupling their lifetime to a caller process.
+
 ## [2.0.4] - 2026-10-22
 
 ### Added

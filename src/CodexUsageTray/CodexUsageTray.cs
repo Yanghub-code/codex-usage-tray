@@ -18,7 +18,7 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Windows tray indicators for Codex quota and physical memory")]
 [assembly: AssemblyCompany("Local")]
 [assembly: AssemblyProduct("Codex Usage Tray")]
-[assembly: AssemblyVersion("2.0.4.0")]
+[assembly: AssemblyVersion("2.0.6.0")]
 
 namespace CodexUsageTray
 {
@@ -71,18 +71,32 @@ namespace CodexUsageTray
 
             try
             {
-                string executable = GetCurrentExecutablePath();
-                if (string.IsNullOrEmpty(executable))
+                string watcherShortcut = GetWatcherShortcutPath();
+                ProcessStartInfo startInfo = new ProcessStartInfo();
+                if (File.Exists(watcherShortcut))
                 {
-                    return;
+                    startInfo.FileName = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                        "explorer.exe");
+                    startInfo.Arguments = "\"" + watcherShortcut + "\"";
+                    startInfo.WorkingDirectory = Path.GetDirectoryName(watcherShortcut);
+                    startInfo.UseShellExecute = false;
+                    startInfo.CreateNoWindow = true;
+                }
+                else
+                {
+                    string executable = GetCurrentExecutablePath();
+                    if (string.IsNullOrEmpty(executable))
+                    {
+                        return;
+                    }
+
+                    startInfo.FileName = executable;
+                    startInfo.Arguments = "--watch-codex";
+                    startInfo.WorkingDirectory = Path.GetDirectoryName(executable);
+                    startInfo.UseShellExecute = true;
                 }
 
-                ProcessStartInfo startInfo = new ProcessStartInfo();
-                startInfo.FileName = executable;
-                startInfo.Arguments = "--watch-codex";
-                startInfo.WorkingDirectory = Path.GetDirectoryName(executable);
-                startInfo.UseShellExecute = false;
-                startInfo.CreateNoWindow = true;
                 Process.Start(startInfo);
             }
             catch
@@ -239,8 +253,7 @@ namespace CodexUsageTray
                 ProcessStartInfo startInfo = new ProcessStartInfo();
                 startInfo.FileName = executable;
                 startInfo.WorkingDirectory = Path.GetDirectoryName(executable);
-                startInfo.UseShellExecute = false;
-                startInfo.CreateNoWindow = true;
+                startInfo.UseShellExecute = true;
                 Process.Start(startInfo);
             }
             catch
@@ -255,6 +268,13 @@ namespace CodexUsageTray
             {
                 return current.MainModule == null ? null : current.MainModule.FileName;
             }
+        }
+
+        private static string GetWatcherShortcutPath()
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Startup),
+                "Codex Usage Tray Watcher.lnk");
         }
     }
 
@@ -1028,7 +1048,7 @@ namespace CodexUsageTray
             {
                 Dictionary<string, object> status = new Dictionary<string, object>();
                 status["updatedAt"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
-                status["appVersion"] = "2.0.4";
+                status["appVersion"] = "2.0.6";
                 status["memoryRefreshSeconds"] = MemoryRefreshMilliseconds / 1000;
                 status["codexRefreshSeconds"] = QuotaRefreshMilliseconds / 1000;
 
