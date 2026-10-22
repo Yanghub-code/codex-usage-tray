@@ -23,6 +23,7 @@
 - 常驻 Windows 任务栏系统托盘左侧，不抢占窗口焦点。
 - **全屏时自动隐藏**：浏览器全屏视频、PPT 放映等真正覆盖主任务栏所在显示器的全屏窗口会隐藏额度条；退出全屏后自动恢复。普通最大化窗口不触发。
 - 可通过额度条右键菜单勾选或取消「全屏时自动隐藏」，设置保存在 `%LOCALAPPDATA%\CodexUsageTray\settings.json`；隐藏时仍正常刷新数据。
+- 保留 Windows 登录自启；当 Codex 桌面应用启动或重开时，后台本地监视器会自动恢复额度条，不会重复启动多个指标实例。
 - Codex 额度默认每 **5 分钟**刷新一次。
 - 内存占用默认每 **30 分钟**刷新一次。
 - 启动时立即读取一次，无需等待首个刷新周期。
@@ -39,7 +40,7 @@
 ## 快速安装
 
 1. 打开 [Releases](https://github.com/Yanghub-code/codex-usage-tray/releases/latest)。
-2. 下载 `CodexUsageTray-v2.0.3-win-x64.zip`。
+2. 下载 `CodexUsageTray-v2.0.4-win-x64.zip`。
 3. 解压压缩包。
 4. 在解压目录执行：
 
@@ -82,7 +83,7 @@ cd codex-usage-tray
 生成的程序位于 `artifacts\bin\CodexUsageTray.exe`。创建完整发行包：
 
 ```powershell
-.\scripts\package.ps1 -Version 2.0.3
+.\scripts\package.ps1 -Version 2.0.4
 ```
 
 项目只使用 Windows 与 .NET Framework 自带组件，不需要 NuGet 包。
@@ -109,3 +110,4 @@ Codex 的本机接口可能随产品版本变化。如果额度读取失效，�
 ## 许可证
 
 [MIT License](LICENSE)
+
