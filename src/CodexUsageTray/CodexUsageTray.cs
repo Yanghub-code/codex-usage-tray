@@ -18,7 +18,7 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Windows tray indicators for Codex quota and physical memory")]
 [assembly: AssemblyCompany("Local")]
 [assembly: AssemblyProduct("Codex Usage Tray")]
-[assembly: AssemblyVersion("2.0.2.0")]
+[assembly: AssemblyVersion("2.0.3.0")]
 
 namespace CodexUsageTray
 {
@@ -135,6 +135,52 @@ namespace CodexUsageTray
         internal string PlanType;
     }
 
+    internal static class MeterPreferences
+    {
+        private static readonly string SettingsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "CodexUsageTray",
+            "settings.json");
+
+        internal static bool LoadAutoHideFullscreen()
+        {
+            try
+            {
+                if (File.Exists(SettingsPath))
+                {
+                    Dictionary<string, object> settings =
+                        new JavaScriptSerializer().DeserializeObject(File.ReadAllText(SettingsPath)) as Dictionary<string, object>;
+                    object value;
+                    if (settings != null && settings.TryGetValue("autoHideFullscreen", out value) && value is bool)
+                    {
+                        return (bool)value;
+                    }
+                }
+            }
+            catch
+            {
+                // Damaged or inaccessible settings should not prevent startup.
+            }
+            return true;
+        }
+
+        internal static void SaveAutoHideFullscreen(bool enabled)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath));
+                Dictionary<string, object> settings = new Dictionary<string, object>();
+                settings["autoHideFullscreen"] = enabled;
+                string json = new JavaScriptSerializer().Serialize(settings);
+                File.WriteAllText(SettingsPath, json, new UTF8Encoding(false));
+            }
+            catch
+            {
+                // A read-only configuration path must not stop monitoring.
+            }
+        }
+    }
+
     internal sealed class TaskbarMeterForm : Form
     {
         private const int MeterWidth = 204;
@@ -144,6 +190,7 @@ namespace CodexUsageTray
         private static readonly IntPtr HwndTopMost = new IntPtr(-1);
 
         private readonly System.Windows.Forms.Timer positionTimer;
+        private bool autoHideFullscreen;
         private readonly ToolTip detailsToolTip;
         private int quotaPercent = -1;
         private int memoryPercent = -1;
@@ -159,6 +206,13 @@ namespace CodexUsageTray
             internal int Bottom;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativePoint
+        {
+            internal int X;
+            internal int Y;
+        }
+
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr FindWindow(string className, string windowName);
 
@@ -168,6 +222,27 @@ namespace CodexUsageTray
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetWindowRect(IntPtr window, out NativeRectangle rectangle);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetShellWindow();
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsIconic(IntPtr window);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetClientRect(IntPtr window, out NativeRectangle rectangle);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ClientToScreen(IntPtr window, ref NativePoint point);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr window, StringBuilder className, int maxCount);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -180,8 +255,9 @@ namespace CodexUsageTray
             int height,
             uint flags);
 
-        internal TaskbarMeterForm(ContextMenuStrip contextMenu)
+        internal TaskbarMeterForm(ContextMenuStrip contextMenu, bool autoHideFullscreen)
         {
+            this.autoHideFullscreen = autoHideFullscreen;
             AutoScaleMode = AutoScaleMode.None;
             BackColor = Color.FromArgb(22, 28, 39);
             ClientSize = new Size(MeterWidth, MeterHeight);
@@ -209,11 +285,11 @@ namespace CodexUsageTray
             UpdateToolTip();
 
             positionTimer = new System.Windows.Forms.Timer();
-            positionTimer.Interval = 1500;
-            positionTimer.Tick += delegate { PositionBesideSystemTray(); };
+            positionTimer.Interval = 1000;
+            positionTimer.Tick += delegate { UpdateVisibilityAndPosition(); };
             positionTimer.Start();
 
-            Shown += delegate { PositionBesideSystemTray(); };
+            Shown += delegate { UpdateVisibilityAndPosition(); };
             SizeChanged += delegate { UpdateRoundedRegion(); };
         }
 
@@ -232,6 +308,12 @@ namespace CodexUsageTray
                 parameters.ExStyle |= WsExToolWindow | WsExNoActivate;
                 return parameters;
             }
+        }
+
+        internal void SetAutoHideFullscreen(bool enabled)
+        {
+            autoHideFullscreen = enabled;
+            UpdateVisibilityAndPosition();
         }
 
         internal void SetQuota(int percent, string details)
@@ -341,6 +423,88 @@ namespace CodexUsageTray
             }
         }
 
+        private void UpdateVisibilityAndPosition()
+        {
+            if (autoHideFullscreen && IsFullscreenOnTaskbarDisplay())
+            {
+                if (Visible)
+                {
+                    Hide();
+                }
+                return;
+            }
+
+            if (!Visible)
+            {
+                Show();
+            }
+            PositionBesideSystemTray();
+        }
+
+        private bool IsFullscreenOnTaskbarDisplay()
+        {
+            IntPtr foreground = GetForegroundWindow();
+            if (foreground == IntPtr.Zero || foreground == Handle ||
+                foreground == GetShellWindow() || IsIconic(foreground))
+            {
+                return false;
+            }
+
+            StringBuilder className = new StringBuilder(256);
+            if (GetClassName(foreground, className, className.Capacity) > 0)
+            {
+                string windowClass = className.ToString();
+                if (windowClass == "Progman" || windowClass == "WorkerW" ||
+                    windowClass == "Shell_TrayWnd" || windowClass == "Shell_SecondaryTrayWnd")
+                {
+                    return false;
+                }
+            }
+
+            IntPtr taskbar = FindWindow("Shell_TrayWnd", null);
+            Rectangle display = taskbar == IntPtr.Zero
+                ? Screen.PrimaryScreen.Bounds
+                : Screen.FromHandle(taskbar).Bounds;
+
+            NativeRectangle windowBounds;
+            NativeRectangle clientBounds;
+            if (!GetWindowRect(foreground, out windowBounds) ||
+                !GetClientRect(foreground, out clientBounds))
+            {
+                return false;
+            }
+
+            // A normal maximized window commonly extends its invisible resize
+            // border beyond the monitor. An actual fullscreen window fits it.
+            const int edgeTolerance = 2;
+            if (Math.Abs(windowBounds.Left - display.Left) > edgeTolerance ||
+                Math.Abs(windowBounds.Top - display.Top) > edgeTolerance ||
+                Math.Abs(windowBounds.Right - display.Right) > edgeTolerance ||
+                Math.Abs(windowBounds.Bottom - display.Bottom) > edgeTolerance)
+            {
+                return false;
+            }
+
+            NativePoint clientTopLeft = new NativePoint();
+            clientTopLeft.X = clientBounds.Left;
+            clientTopLeft.Y = clientBounds.Top;
+            NativePoint clientBottomRight = new NativePoint();
+            clientBottomRight.X = clientBounds.Right;
+            clientBottomRight.Y = clientBounds.Bottom;
+            if (!ClientToScreen(foreground, ref clientTopLeft) ||
+                !ClientToScreen(foreground, ref clientBottomRight))
+            {
+                return false;
+            }
+
+            // Excluding the non-client title/tab bar avoids treating ordinary
+            // maximized windows as fullscreen, including auto-hide taskbars.
+            return clientTopLeft.X <= display.Left + edgeTolerance &&
+                clientTopLeft.Y <= display.Top + edgeTolerance &&
+                clientBottomRight.X >= display.Right - edgeTolerance &&
+                clientBottomRight.Y >= display.Bottom - edgeTolerance;
+        }
+
         private void PositionBesideSystemTray()
         {
             IntPtr taskbar = FindWindow("Shell_TrayWnd", null);
@@ -447,6 +611,15 @@ namespace CodexUsageTray
             ToolStripMenuItem refreshItem = new ToolStripMenuItem("立即刷新");
             refreshItem.Click += delegate { RefreshMemory(); StartQuotaRefresh(); };
 
+            ToolStripMenuItem autoHideFullscreenItem = new ToolStripMenuItem("全屏时自动隐藏");
+            autoHideFullscreenItem.Checked = MeterPreferences.LoadAutoHideFullscreen();
+            autoHideFullscreenItem.CheckOnClick = true;
+            autoHideFullscreenItem.CheckedChanged += delegate
+            {
+                meterForm.SetAutoHideFullscreen(autoHideFullscreenItem.Checked);
+                MeterPreferences.SaveAutoHideFullscreen(autoHideFullscreenItem.Checked);
+            };
+
             ToolStripMenuItem openCodexItem = new ToolStripMenuItem("打开 Codex");
             openCodexItem.Click += delegate { OpenCodex(); };
 
@@ -460,6 +633,8 @@ namespace CodexUsageTray
             contextMenu.Items.Add(memoryStatusItem);
             contextMenu.Items.Add(new ToolStripSeparator());
             contextMenu.Items.Add(refreshItem);
+            contextMenu.Items.Add(autoHideFullscreenItem);
+            contextMenu.Items.Add(new ToolStripSeparator());
             contextMenu.Items.Add(openCodexItem);
             contextMenu.Items.Add(openTaskManagerItem);
             contextMenu.Items.Add(new ToolStripSeparator());
@@ -482,7 +657,7 @@ namespace CodexUsageTray
             memoryNotifyIcon.ContextMenuStrip = contextMenu;
             memoryNotifyIcon.DoubleClick += delegate { OpenTaskManager(); };
 
-            meterForm = new TaskbarMeterForm(contextMenu);
+            meterForm = new TaskbarMeterForm(contextMenu, autoHideFullscreenItem.Checked);
             meterForm.Show();
 
             memoryTimer = new System.Windows.Forms.Timer();
@@ -640,7 +815,7 @@ namespace CodexUsageTray
             {
                 Dictionary<string, object> status = new Dictionary<string, object>();
                 status["updatedAt"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
-                status["appVersion"] = "2.0.2";
+                status["appVersion"] = "2.0.3";
                 status["memoryRefreshSeconds"] = MemoryRefreshMilliseconds / 1000;
                 status["codexRefreshSeconds"] = QuotaRefreshMilliseconds / 1000;
 
